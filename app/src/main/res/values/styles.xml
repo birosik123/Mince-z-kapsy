@@ -1,13 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <!-- Base application theme - dark, fullscreen -->
-    <style name="AppTheme" parent="android:Theme.Material.NoTitleBar.Fullscreen">
+    <style name="AppTheme" parent="android:Theme.Black.NoTitleBar.Fullscreen">
         <item name="android:windowBackground">@android:color/black</item>
-        <item name="android:statusBarColor">#000000</item>
-        <item name="android:navigationBarColor">#121212</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:hardwareAccelerated">true</item>
     </style>
-
 </resources>
