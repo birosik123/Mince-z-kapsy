@@ -338,9 +338,64 @@
                 max-height: 2000px;
         }
 
+
+        /* === CUSTOM DIALOGS === */
+        #customDialogOverlay {
+            position: fixed; top:0; left:0; right:0; bottom:0;
+            background: rgba(0,0,0,0.85); z-index: 99999;
+            display: none; align-items: center; justify-content: center; padding: 24px;
+        }
+        #customDialogOverlay.active { display: flex; }
+        #customDialogBox {
+            background: var(--bg-card); border: 1px solid var(--border-color);
+            border-radius: 20px; padding: 28px 24px; width: 100%; max-width: 380px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.9);
+        }
+        #customDialogTitle {
+            font-size: 1.1rem; font-weight: 800; margin-bottom: 12px; color: var(--text-primary);
+        }
+        #customDialogMessage {
+            font-size: 0.95rem; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5;
+        }
+        #customDialogInput {
+            width: 100%; padding: 12px 14px; border: 1px solid var(--border-color);
+            border-radius: 10px; background: var(--bg-subtle); color: var(--text-primary);
+            font-size: 0.95rem; font-family: 'Inter'; margin-bottom: 16px; outline: none;
+            display: none;
+        }
+        #customDialogInput:focus { border-color: var(--accent-blue); }
+        #customDialogBtns {
+            display: flex; gap: 10px;
+        }
+        #customDialogBtns button {
+            flex: 1; padding: 13px; border-radius: 10px; font-weight: 700;
+            font-size: 0.95rem; cursor: pointer; font-family: 'Inter'; border: none;
+        }
+        #customDialogCancel {
+            background: var(--bg-subtle); color: var(--text-secondary);
+            border: 1px solid var(--border-color) !important;
+        }
+        #customDialogConfirm {
+            background: var(--accent-blue); color: white;
+        }
+        #customDialogConfirm.danger { background: var(--accent-red); }
     </style>
 </head>
 <body>
+
+
+    <!-- Custom Styled Dialog -->
+    <div id="customDialogOverlay">
+        <div id="customDialogBox">
+            <div id="customDialogTitle">Mince z kapsy</div>
+            <div id="customDialogMessage"></div>
+            <input type="text" id="customDialogInput" autocomplete="off">
+            <div id="customDialogBtns">
+                <button id="customDialogCancel" style="display:none" onclick="_dialogCancel()">Zrušit</button>
+                <button id="customDialogConfirm" onclick="_dialogConfirm()">OK</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast Container -->
     <div id="toast-container"></div>
@@ -800,6 +855,84 @@
         let pieChartMode = 'overall';
 
         // --- TOAST NOTIFICATIONS ---
+
+        // === CUSTOM DIALOG SYSTEM ===
+        let _dialogResolve = null;
+
+        function _showDialog(type, message, defaultVal, isDanger) {
+            return new Promise(resolve => {
+                _dialogResolve = resolve;
+                document.getElementById('customDialogMessage').textContent = message;
+                const inp = document.getElementById('customDialogInput');
+                const cancel = document.getElementById('customDialogCancel');
+                const confirm = document.getElementById('customDialogConfirm');
+                confirm.className = isDanger ? 'danger' : '';
+                if (type === 'alert') {
+                    inp.style.display = 'none';
+                    cancel.style.display = 'none';
+                    confirm.textContent = 'OK';
+                } else if (type === 'confirm') {
+                    inp.style.display = 'none';
+                    cancel.style.display = 'block';
+                    cancel.textContent = 'Ne';
+                    confirm.textContent = 'Ano';
+                } else if (type === 'prompt') {
+                    inp.style.display = 'block';
+                    inp.value = defaultVal || '';
+                    cancel.style.display = 'block';
+                    cancel.textContent = 'Zrušit';
+                    confirm.textContent = 'OK';
+                    setTimeout(() => inp.focus(), 100);
+                }
+                document.getElementById('customDialogOverlay').classList.add('active');
+            });
+        }
+        function _dialogConfirm() {
+            const type = document.getElementById('customDialogInput').style.display !== 'none' ? 'prompt' : 
+                         document.getElementById('customDialogCancel').style.display !== 'none' ? 'confirm' : 'alert';
+            document.getElementById('customDialogOverlay').classList.remove('active');
+            if (_dialogResolve) {
+                if (type === 'prompt') _dialogResolve(document.getElementById('customDialogInput').value);
+                else if (type === 'confirm') _dialogResolve(true);
+                else _dialogResolve(true);
+                _dialogResolve = null;
+            }
+        }
+        function _dialogCancel() {
+            document.getElementById('customDialogOverlay').classList.remove('active');
+            if (_dialogResolve) {
+                _dialogResolve(null);
+                _dialogResolve = null;
+            }
+        }
+        async function appAlert(msg) { await _showDialog('alert', msg, '', false); }
+        async function appConfirm(msg, danger) { return await _showDialog('confirm', msg, '', danger||false); }
+        async function appPrompt(msg, def) { return await _showDialog('prompt', msg, def||'', false); }
+
+        // === EXPORT - Android compatible ===
+        // exportData moved above);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'smartbudget_backup_' + new Date().toISOString().split('T')[0] + '.json';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+                showToast('✅ Záloha stažena');
+            } catch(e) {
+                // Fallback - data:URI
+                const json = JSON.stringify(AppState);
+                const uri = 'data:application/json;charset=utf-8,' + encodeURIComponent(json);
+                const a = document.createElement('a');
+                a.href = uri;
+                a.download = 'smartbudget_backup.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                showToast('✅ Záloha stažena');
+            }
+        }
+
         function showToast(message) {
             const container = document.getElementById('toast-container'); if (!container) return;
             const toast = document.createElement('div'); toast.className = 'toast'; toast.innerHTML = `<span class="toast-icon">✅</span> ${message}`;
@@ -856,8 +989,85 @@
              });
         }
         function resetAppState() { AppState = { balance: 0, transactions: [], loans: [], categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)), templates: [], categoryLimits: {}, categoryColors: JSON.parse(JSON.stringify(DEFAULT_CATEGORY_COLORS)), hiddenBudgetCategories: [...DEFAULT_HIDDEN_CATEGORIES], analysisSettings: JSON.parse(JSON.stringify(DEFAULT_ANALYSIS_SETTINGS)), transactionLimit: 5 }; saveData(); }
-        function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(AppState)); updateUI(); }
-        function clearAllData() { if(confirm("Opravdu smazat veškerá data?")) { localStorage.removeItem(STORAGE_KEY); location.reload(); }}
+        function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(AppState)); updateUI(); refreshAllCharts(); }
+        function refreshAllCharts() {
+            // Naplnit year selecty vždy (i když sekce není viditelná)
+            const years = [...new Set(AppState.transactions.map(t => new Date(t.date).getFullYear()))].sort((a,b) => b - a);
+            const currentYear = new Date().getFullYear();
+
+            // --- Graf 1: Income/Expense year select ---
+            const ieSelect = document.getElementById('incomeExpenseYearSelect');
+            if (ieSelect) {
+                const prev = ieSelect.value;
+                ieSelect.innerHTML = '';
+                years.forEach(y => { ieSelect.innerHTML += `<option value="${y}">${y}</option>`; });
+                if (years.includes(parseInt(prev))) ieSelect.value = prev;
+                else if (years.includes(currentYear)) ieSelect.value = currentYear;
+                else if (years.length) ieSelect.value = years[0];
+            }
+
+            // --- Graf 2: Trend year select ---
+            const trendYear = document.getElementById('trendYear');
+            if (trendYear) {
+                const prev = trendYear.value;
+                trendYear.innerHTML = '';
+                if (years.length === 0) {
+                    trendYear.innerHTML = `<option value="${currentYear}">${currentYear}</option>`;
+                } else {
+                    years.forEach(y => { trendYear.innerHTML += `<option value="${y}">${y}</option>`; });
+                    if (years.includes(parseInt(prev))) trendYear.value = prev;
+                    else if (years.includes(currentYear)) trendYear.value = currentYear;
+                    else trendYear.value = years[0];
+                }
+                // Naplnit category select
+                const type = document.getElementById('trendType') ? document.getElementById('trendType').value : 'expense';
+                const catSelect = document.getElementById('trendCategory');
+                if (catSelect) {
+                    catSelect.innerHTML = '<option value="all">Všechny kategorie</option>';
+                    (AppState.categories[type] || []).forEach(cat => {
+                        catSelect.innerHTML += `<option value="${cat}">${cat}</option>`;
+                    });
+                }
+            }
+
+            // --- Graf 3: Pie year select ---
+            const pieSelect = document.getElementById('pieChartModeSelect');
+            if (pieSelect) {
+                const prev = pieSelect.value;
+                pieSelect.innerHTML = '<option value="overall">Celkově (vše)</option>';
+                years.forEach(y => { pieSelect.innerHTML += `<option value="${y}">${y}</option>`; });
+                if (prev === 'overall' || years.includes(parseInt(prev))) pieSelect.value = prev;
+            }
+
+            // --- Graf 4: Balance year select ---
+            const balYear = document.getElementById('balanceYearSelect');
+            if (balYear) {
+                const prev = balYear.value;
+                balYear.innerHTML = '';
+                years.forEach(y => { balYear.innerHTML += `<option value="${y}">${y}</option>`; });
+                if (years.includes(parseInt(prev))) balYear.value = prev;
+                else if (years.includes(currentYear)) balYear.value = currentYear;
+                else if (years.length) balYear.value = years[0];
+            }
+
+            // Pokud je sekce grafů aktivní - překreslit vše
+            const chartsSection = document.getElementById('charts');
+            if (chartsSection && chartsSection.classList.contains('active')) {
+                if (typeof renderIncomeExpenseLineChart === 'function') {
+                    const y = ieSelect ? parseInt(ieSelect.value) : currentYear;
+                    renderIncomeExpenseLineChart(isNaN(y) ? currentYear : y);
+                }
+                if (typeof updateTrendChart === 'function') updateTrendChart();
+                if (typeof updatePieChart === 'function') updatePieChart();
+                if (typeof updateBalanceChart === 'function') {
+                    const p = document.getElementById('balancePeriodSelect');
+                    updateBalanceChartFromSelect();
+                }
+            }
+        }
+
+
+        async function clearAllData() { const ok = await appConfirm("Opravdu smazat veškerá data? Tato akce je nevratná.", true); if(ok) { try { localStorage.removeItem(STORAGE_KEY); } catch(e){} resetAppState(); updateUI(); refreshAllCharts(); showToast("Data smazána"); }}
 
         // --- NAVIGATION & VIEWS ---
         function toggleMenu() { document.getElementById('sidebarMenu').classList.toggle('active'); document.getElementById('sidebarOverlay').classList.toggle('active'); }
@@ -865,7 +1075,7 @@
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active')); document.getElementById(viewId).classList.add('active');
             document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active')); if(navElement) navElement.classList.add('active');
             if(viewId === 'dashboard') { updatePieChart(); renderDashboardBudgetOverview(); } 
-            if(viewId === 'charts') { updatePieChart(); updateBalanceChart(12); renderIncomeExpenseLineChart(); }
+            if(viewId === 'charts') { setTimeout(() => { refreshAllCharts(); updatePieChart(); const p = document.getElementById('balancePeriodSelect'); const y = document.getElementById('balanceYearSelect'); const period = p ? parseInt(p.value)||12 : 12; const yr = y ? parseInt(y.value)||null : null; updateBalanceChart(period, null, yr); const ies = document.getElementById('incomeExpenseYearSelect'); if(ies) renderIncomeExpenseLineChart(parseInt(ies.value)||new Date().getFullYear()); updateTrendChart(); }, 50); }
             if(viewId === 'loans') { closeLoanDetail(); hideLoanCreationForm(); }
             if(viewId === 'analysis-view') { renderAnalysisView(); }
             if(viewId === 'settings') { renderSettingsCategories(); updateAnalysisSettingsUI(); } 
@@ -896,7 +1106,7 @@
 
         // --- TRANSACTIONS & LOAN LOGIC ---
         function createTransactionInternal(data) { if (data.type === 'income') AppState.balance += data.amount; else AppState.balance -= data.amount; if (data.linkedLoanId && data.type === 'expense') { const loan = AppState.loans.find(l => l.id === data.linkedLoanId); if (loan) loan.currentPrincipal = Math.max(0, loan.currentPrincipal - (data.principalAmount !== undefined ? data.principalAmount : data.amount)); } AppState.transactions.unshift({ id: "tx_" + Date.now(), ...data }); }
-        function UI_saveTransactionClick() { const type = document.getElementById('transType').value; const amount = parseFloat(document.getElementById('transAmount').value); const desc = document.getElementById('transDesc').value; const category = document.getElementById('transCategory').value; const date = document.getElementById('transDate').value; const linkedLoanId = document.getElementById('transLinkedLoan').value || null; if (!amount || amount <= 0 || !date) { alert('Vyplňte částku a datum.'); return; } if(editingTxId) deleteTransactionInternal(editingTxId); 
+        function UI_saveTransactionClick() { const type = document.getElementById('transType').value; const amount = parseFloat(document.getElementById('transAmount').value); const desc = document.getElementById('transDesc').value; const category = document.getElementById('transCategory').value; const date = document.getElementById('transDate').value; const linkedLoanId = document.getElementById('transLinkedLoan').value || null; if (!amount || amount <= 0 || !date) { appAlert('Vyplňte částku a datum.'); return; } if(editingTxId) deleteTransactionInternal(editingTxId); 
         let calculatedPrincipal = 0;
         if (linkedLoanId && type === 'expense') {
             const loan = AppState.loans.find(l => l.id === linkedLoanId);
@@ -918,7 +1128,7 @@
         }
         function deleteTransactionInternal(id) { const tx = AppState.transactions.find(t => t.id === id); if(!tx) return; if (tx.type === 'income') AppState.balance -= tx.amount; else AppState.balance += tx.amount; if (tx.linkedLoanId && tx.type === 'expense') { const loan = AppState.loans.find(l => l.id === tx.linkedLoanId); if (loan) loan.currentPrincipal += (tx.principalAmount !== undefined ? tx.principalAmount : tx.amount); } AppState.transactions = AppState.transactions.filter(t => t.id !== id); }
         function editTransaction(id) { const tx = AppState.transactions.find(t => t.id === id); if(!tx) return; editingTxId = id; document.getElementById('transType').value = tx.type; updateCategoryDropdown('trans'); document.getElementById('transAmount').value = tx.amount; document.getElementById('transDesc').value = tx.desc || ''; document.getElementById('transCategory').value = tx.category; document.getElementById('transDate').value = tx.date; checkTxLoanLinking(); if(tx.linkedLoanId) document.getElementById('transLinkedLoan').value = tx.linkedLoanId; openTxModal(true); }
-        function deleteTransaction(id) { if(confirm("Smazat?")) { deleteTransactionInternal(id); saveData(); showToast('Transakce smazána'); 
+        async function deleteTransaction(id) { const ok = await appConfirm("Smazat transakci?", true); if(ok) { deleteTransactionInternal(id); saveData(); showToast('Transakce smazána'); 
         // Aktualizace grafů po smazání transakce
         updatePieChart(); 
         if (typeof updateBalanceChart === 'function') updateBalanceChart(12); 
@@ -995,7 +1205,7 @@
         function hideLoanCreationForm() { document.getElementById('loanCreationCard').style.display='none'; document.getElementById('loansOverviewSection').style.display='block'; document.getElementById('useManualFirstPayment').checked=false; toggleManualPaymentFields(); }
         function closeLoanDetail() { document.getElementById('loanDetailCard').style.display='none'; document.getElementById('loansOverviewSection').style.display='block'; }
         function toggleManualPaymentFields() { document.getElementById('manualPaymentFields').style.display = document.getElementById('useManualFirstPayment').checked ? 'grid' : 'none'; }
-        function createNewLoan() { const name = document.getElementById('newLoanName').value; const original = parseFloat(document.getElementById('newLoanOriginal').value); const current = parseFloat(document.getElementById('newLoanCurrent').value); const rate = parseFloat(document.getElementById('newLoanRate').value); const payment = parseFloat(document.getElementById('newLoanPayment').value); const disbursementDate = document.getElementById('newLoanDisbursementDate').value; const firstPaymentDate = document.getElementById('newLoanFirstPaymentDate').value; if(!name||isNaN(original)||isNaN(current)||isNaN(rate)||isNaN(payment)||!disbursementDate||!firstPaymentDate) { alert("Vyplňte základní údaje."); return; } let manualData = null; if(document.getElementById('useManualFirstPayment').checked) { const manTotal = parseFloat(document.getElementById('manualFirstTotal').value); const manInterest = parseFloat(document.getElementById('manualFirstInterest').value); if(isNaN(manTotal)||isNaN(manInterest)||manInterest>manTotal) { alert("Chyba v ruční splátce."); return; } manualData = { total: manTotal, interest: manInterest, principal: manTotal - manInterest }; } AppState.loans.push({ id: "l_"+Date.now(), name, originalAmount: original, currentPrincipal: current, interestRate: rate, monthlyPayment: payment, disbursementDate, firstPaymentDate, manualFirstPayment: manualData }); saveData(); hideLoanCreationForm(); document.querySelectorAll('#loanCreationCard input').forEach(i => i.value=''); showToast('Úvěr přidán'); }
+        function createNewLoan() { const name = document.getElementById('newLoanName').value; const original = parseFloat(document.getElementById('newLoanOriginal').value); const current = parseFloat(document.getElementById('newLoanCurrent').value); const rate = parseFloat(document.getElementById('newLoanRate').value); const payment = parseFloat(document.getElementById('newLoanPayment').value); const disbursementDate = document.getElementById('newLoanDisbursementDate').value; const firstPaymentDate = document.getElementById('newLoanFirstPaymentDate').value; if(!name||isNaN(original)||isNaN(current)||isNaN(rate)||isNaN(payment)||!disbursementDate||!firstPaymentDate) { appAlert("Vyplňte základní údaje."); return; } let manualData = null; if(document.getElementById('useManualFirstPayment').checked) { const manTotal = parseFloat(document.getElementById('manualFirstTotal').value); const manInterest = parseFloat(document.getElementById('manualFirstInterest').value); if(isNaN(manTotal)||isNaN(manInterest)||manInterest>manTotal) { appAlert("Chyba v ruční splátce."); return; } manualData = { total: manTotal, interest: manInterest, principal: manTotal - manInterest }; } AppState.loans.push({ id: "l_"+Date.now(), name, originalAmount: original, currentPrincipal: current, interestRate: rate, monthlyPayment: payment, disbursementDate, firstPaymentDate, manualFirstPayment: manualData }); saveData(); hideLoanCreationForm(); document.querySelectorAll('#loanCreationCard input').forEach(i => i.value=''); showToast('Úvěr přidán'); }
         
         
         function getRemainingTime(loan) {
@@ -1110,8 +1320,8 @@
         function showLoanDetails(loanId) { const loan = AppState.loans.find(l => l.id === loanId); if(!loan) return; editingLoanId = loanId; document.getElementById('detailLoanName').textContent = loan.name; document.getElementById('detailRemainingTop').textContent = formatMoney(loan.currentPrincipal); document.getElementById('detailTerms').textContent = `Původní výše: ${formatMoney(loan.originalAmount)} • Úrok: ${loan.interestRate}% p.a.`; const paidTotal = loan.originalAmount - loan.currentPrincipal; document.getElementById('detailPaidTotal').textContent = formatMoney(paidTotal); const progress = Math.min((paidTotal / loan.originalAmount) * 100, 100) || 0; document.getElementById('detailProgressBar').style.width = `${progress}%`; document.getElementById('detailProgressText').textContent = `${Math.round(progress)}%`; renderLoanSchedule(loan); document.getElementById('loansOverviewSection').style.display='none'; document.getElementById('loanDetailCard').style.display='block'; window.scrollTo(0,0); }
         function openLoanEditModal() { const loan = AppState.loans.find(l => l.id === editingLoanId); if(!loan) return; document.getElementById('editLoanId').value = loan.id; document.getElementById('editLoanName').value = loan.name; document.getElementById('editLoanRate').value = loan.interestRate; document.getElementById('editLoanPayment').value = loan.monthlyPayment; document.getElementById('loanEditModal').classList.add('active'); }
         function closeLoanEditModal() { document.getElementById('loanEditModal').classList.remove('active'); }
-        function saveLoanEdit() { const id = document.getElementById('editLoanId').value; const name = document.getElementById('editLoanName').value; const rate = parseFloat(document.getElementById('editLoanRate').value); const payment = parseFloat(document.getElementById('editLoanPayment').value); if(!name || isNaN(rate) || isNaN(payment)) { alert("Vyplňte platné údaje."); return; } const loanIdx = AppState.loans.findIndex(l => l.id === id); if(loanIdx > -1) { AppState.loans[loanIdx].name = name; AppState.loans[loanIdx].interestRate = rate; AppState.loans[loanIdx].monthlyPayment = payment; saveData(); closeLoanEditModal(); showLoanDetails(id); showToast('Úvěr upraven'); } }
-        function deleteLoanById(loanId) { if(!confirm('Opravdu smazat úvěr? Smažou se i všechny přiřazené transakce.')) return; const loanIdx = AppState.loans.findIndex(l => l.id === loanId); if(loanIdx > -1) { AppState.loans.splice(loanIdx, 1); AppState.transactions = AppState.transactions.filter(t => t.linkedLoanId !== loanId); saveData(); closeLoanDetail(); renderLoansOverview(); showToast('Úvěr smazán'); } }
+        function saveLoanEdit() { const id = document.getElementById('editLoanId').value; const name = document.getElementById('editLoanName').value; const rate = parseFloat(document.getElementById('editLoanRate').value); const payment = parseFloat(document.getElementById('editLoanPayment').value); if(!name || isNaN(rate) || isNaN(payment)) { appAlert("Vyplňte platné údaje."); return; } const loanIdx = AppState.loans.findIndex(l => l.id === id); if(loanIdx > -1) { AppState.loans[loanIdx].name = name; AppState.loans[loanIdx].interestRate = rate; AppState.loans[loanIdx].monthlyPayment = payment; saveData(); closeLoanEditModal(); showLoanDetails(id); showToast('Úvěr upraven'); } }
+        async function deleteLoanById(loanId) { const ok = await appConfirm('Opravdu smazat úvěr? Smažou se i všechny přiřazené transakce.', true); if(!ok) return; const loanIdx = AppState.loans.findIndex(l => l.id === loanId); if(loanIdx > -1) { AppState.loans.splice(loanIdx, 1); AppState.transactions = AppState.transactions.filter(t => t.linkedLoanId !== loanId); saveData(); closeLoanDetail(); renderLoansOverview(); showToast('Úvěr smazán'); } }
         function renderLoanSchedule(loan) { const list = document.getElementById('loanScheduleList'); list.innerHTML = ''; let balance = loan.originalAmount; const monthlyRate = (loan.interestRate/100)/12; const currentActual = loan.currentPrincipal; const now = new Date(); const todayNorm = new Date(now.getFullYear(), now.getMonth(), now.getDate()); let nextPayDate = new Date(loan.firstPaymentDate); const loanPayments = AppState.transactions.filter(t => t.type === 'expense' && t.linkedLoanId === loan.id); const historicallyPaidPrincipal = loan.originalAmount - loan.currentPrincipal; let cumulativeScheduledPrincipal = 0; let idx = 1; if (loan.manualFirstPayment) { balance -= loan.manualFirstPayment.principal; cumulativeScheduledPrincipal += loan.manualFirstPayment.principal; renderScheduleCard(list, idx++, nextPayDate, loan.manualFirstPayment.total, loan.manualFirstPayment.interest, loan.manualFirstPayment.principal, balance, currentActual, todayNorm, loanPayments, historicallyPaidPrincipal, cumulativeScheduledPrincipal, true); } else { const d1 = new Date(loan.disbursementDate); const d2 = new Date(loan.firstPaymentDate); const days = Math.floor((Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate()) - Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate())) / (1000*60*60*24)); const dailyRate = (loan.interestRate/100)/365; let interest = balance*dailyRate*days; let principal = loan.monthlyPayment - interest; let total = loan.monthlyPayment; if(principal<0) { principal=0; total=interest; } balance -= principal; cumulativeScheduledPrincipal += principal; renderScheduleCard(list, idx++, nextPayDate, total, interest, principal, balance, currentActual, todayNorm, loanPayments, historicallyPaidPrincipal, cumulativeScheduledPrincipal); } for(let i=0; i<480 && balance > 10; i++) { nextPayDate.setMonth(nextPayDate.getMonth()+1); let interest = balance*monthlyRate; let principal = loan.monthlyPayment-interest; let total = loan.monthlyPayment; if(balance<principal) { principal=balance; total=interest+principal; } balance-=principal; cumulativeScheduledPrincipal += principal; renderScheduleCard(list, idx++, nextPayDate, total, interest, principal, balance, currentActual, todayNorm, loanPayments, historicallyPaidPrincipal, cumulativeScheduledPrincipal); } if (loan.currentPrincipal <= 10) { list.innerHTML += `<div style="margin-top: 24px; padding: 20px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 12px; text-align: center;"><div style="color: var(--accent-green); font-size: 1.2rem; font-weight: 700; margin-bottom: 16px;">🎉 Gratuluju, půjčka zaplacena! 🎉</div><button class="btn" style="background: var(--accent-red); color: white; border: none; font-weight: 600;" onclick="deleteLoanById('${loan.id}')">Nyní můžeš půjčku smazat</button></div>`; } }
         function renderScheduleCard(container, index, date, total, interest, principal, balance, actual, today, realPaymentsList, historicalLimit, currentCumulative, isMan=false) { const foundRealPayment = realPaymentsList.some(t => { const tDate = new Date(t.date); return tDate.getMonth() === date.getMonth() && tDate.getFullYear() === date.getFullYear(); }); const isHistoricalPayment = currentCumulative <= (historicalLimit + 0.01); const isPaid = isMan || foundRealPayment || isHistoricalPayment; const statusClass = isPaid ? 'is-paid' : 'is-plan'; const statusIcon = isPaid ? '✅' : '⏳'; const statusText = isPaid ? 'ZAPL.' : 'PLÁN'; const statusColorClass = isPaid ? 'paid' : 'plan'; const formatSimple = (n) => new Intl.NumberFormat('cs-CZ', {maximumFractionDigits:0}).format(n); container.innerHTML += `<div class="schedule-card ${statusClass}"><div class="sc-index">${index}</div><div class="sc-date-status"><div class="sc-date">${date.toLocaleDateString('cs-CZ', {month:'numeric', year:'numeric'})}</div><div class="sc-status ${statusColorClass}"><span>${statusIcon}</span>${statusText} ${isMan?'(Ručně)':''}</div></div><div class="sc-breakdown"><div>Jist: <span>${formatSimple(principal)}</span></div><div>Úrok: <span>${formatSimple(interest)}</span></div></div><div class="sc-debt"><div class="sc-debt-label">Dluh:</div><div class="sc-debt-amount">${formatSimple(Math.max(0, balance))}</div></div></div>`; }
 
@@ -1140,7 +1350,7 @@
                 saveData();
                 showToast('Počet transakcí uložen');
             } else {
-                alert('Zadejte číslo mezi 1 a 50');
+                appAlert('Zadejte číslo mezi 1 a 50');
             }
         }
 
@@ -1170,7 +1380,7 @@
         }
         function settingsRemoveCategory(type, name) { 
             if(type==='expense'&&name==='Půjčka')return; 
-            if(confirm("Smazat?")) { 
+            const _ok = await appConfirm("Smazat kategorii?", true); if(_ok) { 
                 AppState.categories[type]=AppState.categories[type].filter(c=>c!==name); 
                 // UPRAVENO: Odebrání barvy
                 delete AppState.categoryColors[name];
@@ -1181,7 +1391,7 @@
         }
         
         function editCategory(type, oldName) {
-            const newName = prompt(`Upravit kategorii "${oldName}":`, oldName);
+            const newName = await appPrompt(`Upravit kategorii "${oldName}":`, oldName);
             if (!newName || newName.trim() === '' || newName === oldName) return;
             
             const trimmedNew = newName.trim();
@@ -1323,8 +1533,8 @@
             }
         }
 
-        function addTemplate() { const desc = document.getElementById('templDesc').value; const amount = parseFloat(document.getElementById('templAmount').value); const day = parseInt(document.getElementById('templDay').value); const cat = document.getElementById('templCategory').value; const type = document.getElementById('templType').value; if(desc && !isNaN(amount) && day && day >= 1 && day <= 31) { AppState.templates.push({id:Date.now(), desc, amount, cat, day, type}); saveData(); document.getElementById('templDesc').value=''; document.getElementById('templAmount').value=''; document.getElementById('templDay').value=''; renderTemplates(); showToast('Šablona přidána'); } else { alert("Vyplňte platné údaje (den 1-31)."); } }
-        function deleteTemplate(id) { if(confirm('Smazat šablonu?')) { AppState.templates = AppState.templates.filter(t => t.id !== id); saveData(); renderTemplates(); showToast('Šablona smazána'); } }
+        function addTemplate() { const desc = document.getElementById('templDesc').value; const amount = parseFloat(document.getElementById('templAmount').value); const day = parseInt(document.getElementById('templDay').value); const cat = document.getElementById('templCategory').value; const type = document.getElementById('templType').value; if(desc && !isNaN(amount) && day && day >= 1 && day <= 31) { AppState.templates.push({id:Date.now(), desc, amount, cat, day, type}); saveData(); document.getElementById('templDesc').value=''; document.getElementById('templAmount').value=''; document.getElementById('templDay').value=''; renderTemplates(); showToast('Šablona přidána'); } else { appAlert("Vyplňte platné údaje (den 1-31)."); } }
+        async function deleteTemplate(id) { const ok = await appConfirm('Smazat šablonu?', true); if(ok) { AppState.templates = AppState.templates.filter(t => t.id !== id); saveData(); renderTemplates(); showToast('Šablona smazána'); } }
         function renderTemplates() { const list = document.getElementById('templateList'); list.innerHTML = ''; AppState.templates.sort((a,b)=>a.day-b.day).forEach(t => { const linkedLoan = AppState.loans.find(l => l.name.toLowerCase().trim() === t.desc.toLowerCase().trim()); list.innerHTML += `<div class="list-item"><div><div class="item-main">${t.desc}${linkedLoan ? ` <span class="linked-badge" style="font-weight:600;">🔗 ${linkedLoan.name}</span>` : ''}</div><div class="item-sub">Den: ${t.day}. | <span class="cat-tag">${t.cat}</span> (${t.type === 'income' ? 'Příjem' : 'Výdaj'})</div><div style="margin-top:4px; font-weight:700;" class="${t.type === 'income' ? 'text-success' : 'text-danger'}">${formatMoney(t.amount)}</div></div><div style="display: flex; gap: 4px;"><button class="btn-icon" style="color: var(--accent-blue);" onclick="editTemplate(${t.id})">✏️</button><button class="btn-icon text-danger" onclick="deleteTemplate(${t.id})">✕</button></div></div>`; }); }
         
         function editTemplate(id) {
@@ -1385,7 +1595,7 @@
                 cancelEditTemplate();
                 showToast('Šablona aktualizována');
             } else {
-                alert("Vyplňte platné údaje (den 1-31).");
+                appAlert("Vyplňte platné údaje (den 1-31).");
             }
         }
         
@@ -1406,7 +1616,7 @@
             renderTemplates();
         }
         
-        function applyMonthly() { if(confirm('Vložit trvalé platby pro tento měsíc?')) { processTemplatesForMonth(viewDate.getMonth(), viewDate.getFullYear()); showToast('Platby vloženy'); } }
+        async function applyMonthly() { const ok = await appConfirm('Vložit trvalé platby pro tento měsíc?'); if(ok) { processTemplatesForMonth(viewDate.getMonth(), viewDate.getFullYear()); showToast('Platby vloženy'); } }
 
         function checkDailyStandingOrders() {
             const today = new Date();
@@ -1465,8 +1675,8 @@
         }
 
 
-        function exportData() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(AppState)], {type:'application/json'})); a.download = `smartbudget_backup_${new Date().toISOString().split('T')[0]}.json`; a.click(); showToast('Záloha stažena'); }
-        function importData(e) { const r = new FileReader(); r.onload = (ev) => { try { AppState = JSON.parse(ev.target.result); saveData(); location.reload(); } catch(e) { alert('Chyba importu.'); } }; r.readAsText(e.target.files[0]); }
+        // exportData moved above)); a.download = `smartbudget_backup_${new Date().toISOString().split('T')[0]}.json`; a.click(); showToast('Záloha stažena'); }
+        function importData(e) { const r = new FileReader(); r.onload = (ev) => { try { AppState = JSON.parse(ev.target.result); localStorage.setItem('SmartBudget_DarkMobile_v16_Colors', JSON.stringify(AppState)); updateUI(); refreshAllCharts(); showToast('✅ Záloha načtena'); } catch(e) { appAlert('Chyba importu: soubor není platná záloha.'); } }; r.readAsText(e.target.files[0]); }
         function checkTxLoanLinking() { const type=document.getElementById('transType').value; const cat=document.getElementById('transCategory').value; const section=document.getElementById('transLoanLinkSection'); const select=document.getElementById('transLinkedLoan'); if(type==='expense' && cat==='Půjčka' && AppState.loans.length>0) { section.style.display='block'; if(select.options.length<=1) { select.innerHTML='<option value="">-- Vyberte úvěr --</option>'; AppState.loans.filter(l=>l.currentPrincipal>0).forEach(l=>{select.innerHTML+=`<option value="${l.id}">${l.name}</option>`}); } } else { section.style.display='none'; select.value=""; }}
         
         // --- CHARTS & FORMATTING ---
@@ -2255,7 +2465,7 @@
             const resultDate = document.getElementById('sgResultDate');
 
             if (target <= 0 || monthly <= 0) {
-                alert("Zadejte platnou cílovou částku a měsíční úložku.");
+                appAlert("Zadejte platnou cílovou částku a měsíční úložku.");
                 return;
             }
             if (current >= target) {
@@ -2326,7 +2536,7 @@
         function calculateHourlyValue() {
             const income = parseFloat(document.getElementById('hvIncome').value) || 0;
             const hours = parseFloat(document.getElementById('hvHours').value) || 0;
-            if (income <= 0 || hours <= 0) { alert("Zadejte platný příjem a počet hodin."); return; }
+            if (income <= 0 || hours <= 0) { appAlert("Zadejte platný příjem a počet hodin."); return; }
             const hourly = income / hours;
             document.getElementById('hvResultValue').textContent = formatMoney(hourly);
             document.getElementById('hvResultArea').style.display = 'block';
@@ -2475,7 +2685,7 @@
             const currentSavings = parseFloat(document.getElementById('fireCurrentSavings').value) || 0;
             const monthlySavings = parseFloat(document.getElementById('fireMonthlySavings').value) || 0;
             
-            if (desiredIncome <= 0) { alert("Zadejte požadovaný měsíční příjem."); return; }
+            if (desiredIncome <= 0) { appAlert("Zadejte požadovaný měsíční příjem."); return; }
             
             // 25x pravidlo - potřebuješ 25x ročních výdajů
             const neededAmount = desiredIncome * 12 * 25;
@@ -2555,7 +2765,7 @@
             const savings = parseFloat(document.getElementById('inflSavings').value) || 0;
             const income = parseFloat(document.getElementById('inflIncome').value) || 0;
             
-            if (rate <= 0) { alert("Zadejte inflaci."); return; }
+            if (rate <= 0) { appAlert("Zadejte inflaci."); return; }
             
             const savingsLoss = savings * (rate / 100);
             document.getElementById('inflSavingsLoss').textContent = formatMoney(savingsLoss);
@@ -2773,7 +2983,7 @@
                 const amount = parseFloat(document.getElementById('scenarioAmount').value) || 0;
                 const remaining = currentCash - amount;
                 
-                if (amount === 0) { alert("Zadejte výši nečekaného výdaje."); return; }
+                if (amount === 0) { appAlert("Zadejte výši nečekaného výdaje."); return; }
                 
                 if (remaining >= 0) {
                     resultHTML = `
