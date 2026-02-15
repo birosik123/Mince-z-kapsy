@@ -1,0 +1,3 @@
+-keep class cz.mincezkapsy.** { *; }
+-keepattributes *Annotation*
+-keepattributes SourceFile,LineNumberTable
