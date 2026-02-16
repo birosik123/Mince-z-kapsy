@@ -338,6 +338,12 @@
                 max-height: 2000px;
         }
 
+
+        /* === DRAG & DROP KATEGORIE === */
+        .cat-sort-item { transition: background 0.15s; }
+        .cat-sort-item.dragging { opacity: 0.4; background: var(--bg-subtle) !important; }
+        .cat-sort-item.drag-over { background: rgba(59,130,246,0.12) !important; border-radius: 8px; }
+        .cat-drag-handle:active { cursor: grabbing; }
     </style>
 </head>
 <body>
@@ -800,6 +806,112 @@
         let pieChartMode = 'overall';
 
         // --- TOAST NOTIFICATIONS ---
+
+        // === DRAG & DROP ŘAZENÍ KATEGORIÍ ===
+        function initCatDragDrop(list, type) {
+            var dragSrc = null;
+
+            function getItems() { return Array.from(list.querySelectorAll('.cat-sort-item')); }
+
+            function onDragStart(e) {
+                dragSrc = this;
+                this.classList.add('dragging');
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', this.dataset.idx);
+                }
+            }
+            function onDragOver(e) {
+                e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                getItems().forEach(i => i.classList.remove('drag-over'));
+                this.classList.add('drag-over');
+            }
+            function onDragLeave() { this.classList.remove('drag-over'); }
+            function onDrop(e) {
+                e.preventDefault();
+                if (!dragSrc || dragSrc === this) return;
+                var fromIdx = parseInt(dragSrc.dataset.idx);
+                var toIdx = parseInt(this.dataset.idx);
+                var cats = AppState.categories[type];
+                var moved = cats.splice(fromIdx, 1)[0];
+                cats.splice(toIdx, 0, moved);
+                saveData();
+                renderSettingsCategories();
+                updateCategoryDropdown('trans');
+                updateCategoryDropdown('templ');
+                showToast('Pořadí uloženo');
+            }
+            function onDragEnd() {
+                getItems().forEach(i => { i.classList.remove('dragging'); i.classList.remove('drag-over'); });
+            }
+
+            // Touch podpora pro mobil
+            var touchSrc = null, touchClone = null, touchFromIdx = -1;
+            function onTouchStart(e) {
+                var handle = e.target.closest('.cat-drag-handle');
+                if (!handle) return;
+                e.preventDefault();
+                touchSrc = this;
+                touchFromIdx = parseInt(this.dataset.idx);
+                this.classList.add('dragging');
+                // Vytvoř vizuální klon
+                touchClone = this.cloneNode(true);
+                touchClone.style.cssText = 'position:fixed;z-index:9999;opacity:0.85;pointer-events:none;width:'+this.offsetWidth+'px;background:var(--bg-card);border-radius:10px;padding:10px;border:1px solid var(--accent-blue);';
+                document.body.appendChild(touchClone);
+            }
+            function onTouchMove(e) {
+                if (!touchSrc) return;
+                e.preventDefault();
+                var t = e.touches[0];
+                if (touchClone) {
+                    touchClone.style.left = (t.clientX - touchClone.offsetWidth/2) + 'px';
+                    touchClone.style.top  = (t.clientY - 30) + 'px';
+                }
+                // Najdi element pod dotykem
+                touchClone.style.display = 'none';
+                var el = document.elementFromPoint(t.clientX, t.clientY);
+                touchClone.style.display = '';
+                var target = el ? el.closest('.cat-sort-item') : null;
+                getItems().forEach(i => i.classList.remove('drag-over'));
+                if (target && target !== touchSrc) target.classList.add('drag-over');
+            }
+            function onTouchEnd(e) {
+                if (!touchSrc) return;
+                if (touchClone) { document.body.removeChild(touchClone); touchClone = null; }
+                var t = e.changedTouches[0];
+                var el = document.elementFromPoint(t.clientX, t.clientY);
+                var target = el ? el.closest('.cat-sort-item') : null;
+                getItems().forEach(i => { i.classList.remove('dragging'); i.classList.remove('drag-over'); });
+                if (target && target !== touchSrc) {
+                    var toIdx = parseInt(target.dataset.idx);
+                    var cats = AppState.categories[type];
+                    var moved = cats.splice(touchFromIdx, 1)[0];
+                    cats.splice(toIdx, 0, moved);
+                    saveData();
+                    renderSettingsCategories();
+                    updateCategoryDropdown('trans');
+                    updateCategoryDropdown('templ');
+                    showToast('Pořadí uloženo');
+                }
+                touchSrc = null; touchFromIdx = -1;
+            }
+
+            getItems().forEach(function(item) {
+                // Desktop drag
+                item.setAttribute('draggable', 'true');
+                item.addEventListener('dragstart', onDragStart);
+                item.addEventListener('dragover', onDragOver);
+                item.addEventListener('dragleave', onDragLeave);
+                item.addEventListener('drop', onDrop);
+                item.addEventListener('dragend', onDragEnd);
+                // Touch
+                item.addEventListener('touchstart', onTouchStart, {passive:false});
+                item.addEventListener('touchmove', onTouchMove, {passive:false});
+                item.addEventListener('touchend', onTouchEnd);
+            });
+        }
+
         function showToast(message) {
             const container = document.getElementById('toast-container'); if (!container) return;
             const toast = document.createElement('div'); toast.className = 'toast'; toast.innerHTML = `<span class="toast-icon">✅</span> ${message}`;
@@ -1255,17 +1367,17 @@
         }
 
         function renderSettingsCategories() { 
-            // UPRAVENO: Vykreslení seznamu kategorií s výběrem barvy
             ['expense','income'].forEach(type=>{ 
                 const list=document.getElementById('setCatList'+(type=='expense'?'Expense':'Income')); 
                 list.innerHTML=''; 
-                AppState.categories[type].forEach(cat=>{ 
+                AppState.categories[type].forEach((cat, idx)=>{ 
                     const color = AppState.categoryColors[cat] || '#cccccc';
                     list.innerHTML+=`
-                        <div class="list-item" style="padding:10px 0; display: flex; align-items: center; justify-content: space-between;">
-                            <div style="display: flex; align-items: center;">
-                                <input type="color" value="${color}" onchange="updateCategoryColor('${cat}', this.value)" style="margin-right: 10px; border: none; background: none; width: 30px; height: 30px; cursor: pointer; padding: 0;">
-                                <span>${cat}</span>
+                        <div class="list-item cat-sort-item" data-type="${type}" data-idx="${idx}" style="padding:10px 0; display: flex; align-items: center; justify-content: space-between; touch-action: none;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="cat-drag-handle" style="cursor:grab; font-size:1.1rem; color:var(--text-secondary); padding:4px 6px; user-select:none;" title="Přetáhněte pro změnu pořadí">⠿</span>
+                                <input type="color" value="${color}" onchange="updateCategoryColor('${cat}', this.value)" style="border: none; background: none; width: 28px; height: 28px; cursor: pointer; padding: 0;">
+                                <span style="font-weight:600;">${cat}</span>
                             </div>
                             <div style="display: flex; gap: 4px;">
                                 <button class="btn-icon text-primary" style="padding:6px;width:30px;height:30px;" onclick="editCategory('${type}','${cat}')">✏️</button>
@@ -1273,6 +1385,7 @@
                             </div>
                         </div>`; 
                 }); 
+                initCatDragDrop(list, type);
             });
 
             const limitsList = document.getElementById('categoryLimitsSettingsList');
@@ -1487,7 +1600,16 @@
                 showToast('Chyba exportu: ' + e.message);
             }
         }
-        function importData(e) { var r=new FileReader(); r.onload=function(ev){ try{ AppState=JSON.parse(ev.target.result); localStorage.setItem(STORAGE_KEY,JSON.stringify(AppState)); updateUI(); setTimeout(function(){try{initTrendChart();}catch(ex){} try{updatePieChart();}catch(ex){} try{updateBalanceChart(12);}catch(ex){}},100); showToast('Záloha načtena'); }catch(ex){ alert('Chyba importu.'); } }; r.readAsText(e.target.files[0]); }
+        function importData(e) { var r=new FileReader(); r.onload=function(ev){ try{ AppState=JSON.parse(ev.target.result); localStorage.setItem(STORAGE_KEY,JSON.stringify(AppState)); updateUI(); // Zničit staré instance grafů aby se překreslily čistě
+            if(typeof expenseChartInstance!=='undefined'&&expenseChartInstance){try{expenseChartInstance.destroy();}catch(ex){} expenseChartInstance=null;}
+            if(typeof balanceChartInstance!=='undefined'&&balanceChartInstance){try{balanceChartInstance.destroy();}catch(ex){} balanceChartInstance=null;}
+            if(typeof incomeExpenseLineChartInstance!=='undefined'&&incomeExpenseLineChartInstance){try{incomeExpenseLineChartInstance.destroy();}catch(ex){} incomeExpenseLineChartInstance=null;}
+            setTimeout(function(){
+                try{initTrendChart();}catch(ex){}
+                try{updatePieChart();}catch(ex){}
+                try{updateBalanceChart(12);}catch(ex){}
+                try{var s=document.getElementById('incomeExpenseYearSelect'); renderIncomeExpenseLineChart(s?parseInt(s.value):new Date().getFullYear());}catch(ex){}
+            },200); showToast('Záloha načtena'); }catch(ex){ alert('Chyba importu.'); } }; r.readAsText(e.target.files[0]); }
         function checkTxLoanLinking() { const type=document.getElementById('transType').value; const cat=document.getElementById('transCategory').value; const section=document.getElementById('transLoanLinkSection'); const select=document.getElementById('transLinkedLoan'); if(type==='expense' && cat==='Půjčka' && AppState.loans.length>0) { section.style.display='block'; if(select.options.length<=1) { select.innerHTML='<option value="">-- Vyberte úvěr --</option>'; AppState.loans.filter(l=>l.currentPrincipal>0).forEach(l=>{select.innerHTML+=`<option value="${l.id}">${l.name}</option>`}); } } else { section.style.display='none'; select.value=""; }}
         
         // --- CHARTS & FORMATTING ---
@@ -1719,7 +1841,7 @@
                 
                 // Naplníme select
                 const currentValue = pieSelect.value;
-                pieSelect.innerHTML = '';
+                pieSelect.innerHTML = '<option value="overall">Celkově (vše)</option>';
                 sortedYears.forEach(year => {
                     pieSelect.innerHTML += `<option value="${year}">${year}</option>`;
                 });
