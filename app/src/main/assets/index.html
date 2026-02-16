@@ -1604,12 +1604,18 @@
             if(typeof expenseChartInstance!=='undefined'&&expenseChartInstance){try{expenseChartInstance.destroy();}catch(ex){} expenseChartInstance=null;}
             if(typeof balanceChartInstance!=='undefined'&&balanceChartInstance){try{balanceChartInstance.destroy();}catch(ex){} balanceChartInstance=null;}
             if(typeof incomeExpenseLineChartInstance!=='undefined'&&incomeExpenseLineChartInstance){try{incomeExpenseLineChartInstance.destroy();}catch(ex){} incomeExpenseLineChartInstance=null;}
+            pieChartMode = 'overall';
             setTimeout(function(){
                 try{initTrendChart();}catch(ex){}
-                try{updatePieChart();}catch(ex){}
+                try{
+                    // Nastav select na 'overall' před překreslením
+                    var ps=document.getElementById('pieChartModeSelect');
+                    if(ps){ ps.value='overall'; }
+                    updatePieChart();
+                }catch(ex){}
                 try{updateBalanceChart(12);}catch(ex){}
                 try{var s=document.getElementById('incomeExpenseYearSelect'); renderIncomeExpenseLineChart(s?parseInt(s.value):new Date().getFullYear());}catch(ex){}
-            },200); showToast('Záloha načtena'); }catch(ex){ alert('Chyba importu.'); } }; r.readAsText(e.target.files[0]); }
+            },250); showToast('Záloha načtena'); }catch(ex){ alert('Chyba importu.'); } }; r.readAsText(e.target.files[0]); }
         function checkTxLoanLinking() { const type=document.getElementById('transType').value; const cat=document.getElementById('transCategory').value; const section=document.getElementById('transLoanLinkSection'); const select=document.getElementById('transLinkedLoan'); if(type==='expense' && cat==='Půjčka' && AppState.loans.length>0) { section.style.display='block'; if(select.options.length<=1) { select.innerHTML='<option value="">-- Vyberte úvěr --</option>'; AppState.loans.filter(l=>l.currentPrincipal>0).forEach(l=>{select.innerHTML+=`<option value="${l.id}">${l.name}</option>`}); } } else { section.style.display='none'; select.value=""; }}
         
         // --- CHARTS & FORMATTING ---
@@ -1830,28 +1836,27 @@
         function updatePieChart() {
             const pieSelect = document.getElementById('pieChartModeSelect');
             if (pieSelect) {
-                // Získáme všechny roky z transakcí
                 const years = new Set();
                 AppState.transactions.forEach(t => {
-                    const year = new Date(t.date).getFullYear();
-                    years.add(year);
+                    years.add(new Date(t.date).getFullYear());
                 });
-                
                 const sortedYears = Array.from(years).sort((a, b) => b - a);
-                
-                // Naplníme select
-                const currentValue = pieSelect.value;
+
+                // Zachovat aktuální výběr (FIX: správně zachovat 'overall')
+                const currentValue = pieSelect.value || pieChartMode;
                 pieSelect.innerHTML = '<option value="overall">Celkově (vše)</option>';
                 sortedYears.forEach(year => {
                     pieSelect.innerHTML += `<option value="${year}">${year}</option>`;
                 });
-                
-                // Obnovíme hodnotu pokud existuje
-                if (currentValue && sortedYears.includes(parseInt(currentValue))) {
+
+                // FIX: 'overall' je validní hodnota - nesmíme ji přepsat
+                if (currentValue === 'overall') {
+                    pieSelect.value = 'overall';
+                    pieChartMode = 'overall';
+                } else if (currentValue && sortedYears.includes(parseInt(currentValue))) {
                     pieSelect.value = currentValue;
-                    pieChartMode = currentValue;
+                    pieChartMode = parseInt(currentValue);
                 } else if (sortedYears.length > 0) {
-                    // Nastavíme aktuální rok pokud existuje, jinak první v seznamu
                     const currentYear = new Date().getFullYear();
                     if (sortedYears.includes(currentYear)) {
                         pieSelect.value = currentYear;
@@ -1862,20 +1867,45 @@
                     }
                 }
             }
-            
-            const ctx=document.getElementById('pieChart'); if(!ctx)return; let exps; 
-            
-            // Filtrování podle vybraného roku
-            if (!isNaN(pieChartMode)) {
-                // Je to rok
+
+            // FIX: Nemazat canvas innerHTML - zničí canvas element!
+            // Místo toho použít overlay div pro "Žádná data"
+            const pieWrapper = document.getElementById('pieChart') ? document.getElementById('pieChart').parentNode : null;
+            const ctx = document.getElementById('pieChart');
+            if (!ctx) return;
+
+            // Filtrování - FIX: 'overall' zobrazí všechna data
+            let exps;
+            if (pieChartMode === 'overall') {
+                exps = AppState.transactions.filter(t => t.type === 'expense');
+            } else if (!isNaN(pieChartMode)) {
                 const year = parseInt(pieChartMode);
-                exps = AppState.transactions.filter(t=>t.type==='expense'&&new Date(t.date).getFullYear()===year);
-            } else { 
-                // Fallback na aktuální rok
-                exps = AppState.transactions.filter(t=>t.type==='expense'&&new Date(t.date).getFullYear()===viewDate.getFullYear()); 
+                exps = AppState.transactions.filter(t => t.type === 'expense' && new Date(t.date).getFullYear() === year);
+            } else {
+                exps = AppState.transactions.filter(t => t.type === 'expense');
             }
+
+            const totals={}; let sum=0; exps.forEach(t=>{totals[t.category]=(totals[t.category]||0)+t.amount; sum+=t.amount;});
             
-            const totals={}; let sum=0; exps.forEach(t=>{totals[t.category]=(totals[t.category]||0)+t.amount; sum+=t.amount;}); if(sum===0){ctx.parentNode.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:0.9rem;">Žádná data</div>';return;} if(expenseChartInstance)expenseChartInstance.destroy(); 
+            // FIX: Zobrazit "Žádná data" bez mazání canvasu
+            let noDataEl = document.getElementById('pieNoData');
+            if (sum === 0) {
+                if (expenseChartInstance) { expenseChartInstance.destroy(); expenseChartInstance = null; }
+                ctx.style.display = 'none';
+                if (!noDataEl) {
+                    noDataEl = document.createElement('div');
+                    noDataEl.id = 'pieNoData';
+                    noDataEl.style.cssText = 'height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:0.9rem;';
+                    noDataEl.textContent = 'Žádná data';
+                    if (pieWrapper) pieWrapper.appendChild(noDataEl);
+                }
+                return;
+            }
+            // Skrýt "Žádná data", zobrazit canvas
+            if (noDataEl) noDataEl.style.display = 'none';
+            ctx.style.display = '';
+
+            if(expenseChartInstance)expenseChartInstance.destroy(); 
             
             // Seřadíme data od nejvyššího po nejnižší
             const sortedEntries = Object.entries(totals).sort((a, b) => b[1] - a[1]);
