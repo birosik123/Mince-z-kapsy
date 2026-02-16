@@ -1,7 +1,7 @@
 package cz.mincezkapsy;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -187,7 +187,12 @@ public class MainActivity extends Activity {
                              final JsResult alertResult,
                              final JsPromptResult promptResult) {
         runOnUiThread(() -> {
-            // Hlavní container
+            // Čisté Dialog bez AlertDialog.Builder - žádný systémový rámeček
+            Dialog dialog = new Dialog(this);
+            dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+            dialog.setCancelable(false);
+
+            // Root layout
             LinearLayout root = new LinearLayout(this);
             root.setOrientation(LinearLayout.VERTICAL);
             root.setBackground(borderedBg(C_BG, C_BORDER, 20));
@@ -200,7 +205,7 @@ public class MainActivity extends Activity {
             ico.setGravity(Gravity.CENTER);
             LinearLayout.LayoutParams icoP = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            icoP.setMargins(0, 0, 0, dp(12));
+            icoP.setMargins(0, 0, 0, dp(10));
             ico.setLayoutParams(icoP);
             root.addView(ico);
 
@@ -217,7 +222,7 @@ public class MainActivity extends Activity {
             msg.setLayoutParams(msgP);
             root.addView(msg);
 
-            // Input pole (jen pro prompt)
+            // Input (jen pro prompt)
             EditText input = null;
             if (promptResult != null) {
                 input = new EditText(this);
@@ -240,18 +245,18 @@ public class MainActivity extends Activity {
 
             final EditText finalInput = input;
 
-            // Tlačítko Ne/Zrušit (pokud je)
+            // Tlačítko Ne/Zrušit
             if (noText != null) {
                 Button btnNo = makeBtn(noText, C_CARD, C_SUB, C_BORDER);
                 LinearLayout.LayoutParams noP = new LinearLayout.LayoutParams(0, dp(50), 1f);
                 noP.setMargins(0, 0, dp(6), 0);
                 btnNo.setLayoutParams(noP);
-                btnRow.addView(btnNo);
-
                 btnNo.setOnClickListener(v -> {
+                    dialog.dismiss();
                     if (alertResult != null) alertResult.cancel();
                     if (promptResult != null) promptResult.cancel();
                 });
+                btnRow.addView(btnNo);
             }
 
             // Tlačítko Ano/OK
@@ -259,25 +264,6 @@ public class MainActivity extends Activity {
             LinearLayout.LayoutParams yesP = new LinearLayout.LayoutParams(0, dp(50), 1f);
             yesP.setMargins(noText != null ? dp(6) : 0, 0, 0, 0);
             btnYes.setLayoutParams(yesP);
-            btnRow.addView(btnYes);
-
-            btnYes.setOnClickListener(v -> {
-                if (promptResult != null) {
-                    promptResult.confirm(finalInput != null ? finalInput.getText().toString() : "");
-                } else if (alertResult != null) {
-                    alertResult.confirm();
-                }
-            });
-
-            root.addView(btnRow);
-
-            // Zobrazit dialog
-            AlertDialog dialog = new AlertDialog.Builder(this)
-                .setView(root)
-                .setCancelable(false)
-                .create();
-
-            // Přepojit tlačítka na zavření dialogu
             btnYes.setOnClickListener(v -> {
                 dialog.dismiss();
                 if (promptResult != null) {
@@ -286,25 +272,20 @@ public class MainActivity extends Activity {
                     alertResult.confirm();
                 }
             });
-            if (noText != null) {
-                ((Button) btnRow.getChildAt(0)).setOnClickListener(v -> {
-                    dialog.dismiss();
-                    if (alertResult != null) alertResult.cancel();
-                    if (promptResult != null) promptResult.cancel();
-                });
-            }
+            btnRow.addView(btnYes);
+            root.addView(btnRow);
 
-            dialog.show();
+            dialog.setContentView(root);
+
+            // Klíč: průhledné okno = žádný systémový rámeček
             if (dialog.getWindow() != null) {
-                // Odstranit VŠECHNA výchozí Android pozadí = žádný hranatý rámeček
                 dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-                dialog.getWindow().getDecorView().setBackground(new ColorDrawable(Color.TRANSPARENT));
                 dialog.getWindow().getDecorView().setPadding(0, 0, 0, 0);
-                // Šířka 90% obrazovky
-                int w = (int)(getResources().getDisplayMetrics().widthPixels * 0.90f);
+                int w = (int)(getResources().getDisplayMetrics().widthPixels * 0.88f);
                 dialog.getWindow().setLayout(w, WindowManager.LayoutParams.WRAP_CONTENT);
             }
 
+            dialog.show();
             if (finalInput != null) finalInput.requestFocus();
         });
     }
