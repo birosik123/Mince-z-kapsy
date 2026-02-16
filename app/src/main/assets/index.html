@@ -1465,7 +1465,28 @@
         }
 
 
-        function exportData() { try { var blob=new Blob([JSON.stringify(AppState)],{type:'application/json'}); var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download='smartbudget_'+new Date().toISOString().split('T')[0]+'.json'; document.body.appendChild(a); a.click(); setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},300); } catch(e){ var a=document.createElement('a'); a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(AppState)); a.download='smartbudget.json'; document.body.appendChild(a); a.click(); document.body.removeChild(a); } showToast('Záloha stažena'); }
+        function exportData() {
+            var filename = 'smartbudget_' + new Date().toISOString().split('T')[0] + '.json';
+            var json = JSON.stringify(AppState);
+            // Android WebView - použij native bridge
+            if (window.AndroidBridge && window.AndroidBridge.saveFile) {
+                window.AndroidBridge.saveFile(filename, json);
+                showToast('Záloha uložena do Stžené soubory');
+                return;
+            }
+            // Fallback pro prohlížeč
+            try {
+                var blob = new Blob([json], {type:'application/json'});
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url; a.download = filename;
+                document.body.appendChild(a); a.click();
+                setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 300);
+                showToast('Záloha stažena');
+            } catch(e) {
+                showToast('Chyba exportu: ' + e.message);
+            }
+        }
         function importData(e) { var r=new FileReader(); r.onload=function(ev){ try{ AppState=JSON.parse(ev.target.result); localStorage.setItem(STORAGE_KEY,JSON.stringify(AppState)); updateUI(); setTimeout(function(){try{initTrendChart();}catch(ex){} try{updatePieChart();}catch(ex){} try{updateBalanceChart(12);}catch(ex){}},100); showToast('Záloha načtena'); }catch(ex){ alert('Chyba importu.'); } }; r.readAsText(e.target.files[0]); }
         function checkTxLoanLinking() { const type=document.getElementById('transType').value; const cat=document.getElementById('transCategory').value; const section=document.getElementById('transLoanLinkSection'); const select=document.getElementById('transLinkedLoan'); if(type==='expense' && cat==='Půjčka' && AppState.loans.length>0) { section.style.display='block'; if(select.options.length<=1) { select.innerHTML='<option value="">-- Vyberte úvěr --</option>'; AppState.loans.filter(l=>l.currentPrincipal>0).forEach(l=>{select.innerHTML+=`<option value="${l.id}">${l.name}</option>`}); } } else { section.style.display='none'; select.value=""; }}
         
