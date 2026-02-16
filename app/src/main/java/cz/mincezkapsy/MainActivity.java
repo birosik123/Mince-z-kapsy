@@ -296,16 +296,13 @@ public class MainActivity extends Activity {
 
             dialog.show();
             if (dialog.getWindow() != null) {
-                // Průhledné pozadí okna = žádný rámeček, jen náš custom view
+                // Odstranit VŠECHNA výchozí Android pozadí = žádný hranatý rámeček
                 dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-                // Nastavit šířku na 88% obrazovky
-                int screenWidth = getResources().getDisplayMetrics().widthPixels;
-                dialog.getWindow().setLayout(
-                    (int)(screenWidth * 0.88f),
-                    WindowManager.LayoutParams.WRAP_CONTENT
-                );
-                // Odstranit výchozí padding okna
+                dialog.getWindow().getDecorView().setBackground(new ColorDrawable(Color.TRANSPARENT));
                 dialog.getWindow().getDecorView().setPadding(0, 0, 0, 0);
+                // Šířka 90% obrazovky
+                int w = (int)(getResources().getDisplayMetrics().widthPixels * 0.90f);
+                dialog.getWindow().setLayout(w, WindowManager.LayoutParams.WRAP_CONTENT);
             }
 
             if (finalInput != null) finalInput.requestFocus();
