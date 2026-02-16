@@ -967,7 +967,7 @@
                  });
              });
         }
-        function resetAppState() { AppState = { balance: 0, transactions: [], loans: [], categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)), templates: [], categoryLimits: {}, categoryColors: JSON.parse(JSON.stringify(DEFAULT_CATEGORY_COLORS)), hiddenBudgetCategories: [...DEFAULT_HIDDEN_CATEGORIES], analysisSettings: JSON.parse(JSON.stringify(DEFAULT_ANALYSIS_SETTINGS)), transactionLimit: 5 }; saveData(); }
+        function resetAppState() { AppState = { balance: 0, transactions: [], loans: [], categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)), templates: [], categoryLimits: {}, categoryColors: JSON.parse(JSON.stringify(DEFAULT_CATEGORY_COLORS)), hiddenBudgetCategories: [...DEFAULT_HIDDEN_CATEGORIES], analysisSettings: JSON.parse(JSON.stringify(DEFAULT_ANALYSIS_SETTINGS)), transactionLimit: 5, lastAutoRun: null }; saveData(); }
         function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(AppState)); updateUI(); }
         function clearAllData() { if(confirm("Opravdu smazat veškerá data?")) { try{localStorage.removeItem(STORAGE_KEY);}catch(e){} resetAppState(); updateUI(); showToast("Data smazána"); }}
 
@@ -1522,43 +1522,95 @@
         function applyMonthly() { if(confirm('Vložit trvalé platby pro tento měsíc?')) { processTemplatesForMonth(viewDate.getMonth(), viewDate.getFullYear()); showToast('Platby vloženy'); } }
 
         function checkDailyStandingOrders() {
+            if (!AppState.templates || AppState.templates.length === 0) return;
+
             const today = new Date();
-            const currentDay = today.getDate();
-            const currentMonth = today.getMonth();
-            const currentYear = today.getFullYear();
-            
+            today.setHours(0, 0, 0, 0);
+            const todayStr = today.toISOString().split('T')[0];
+
+            // Zjistíme datum posledního spuštění
+            const lastRunStr = AppState.lastAutoRun || null;
+            // Uložit dnešní datum jako poslední spuštění
+            AppState.lastAutoRun = todayStr;
+
+            // Pokud jsme dnes už spustili, nic nedělat
+            if (lastRunStr === todayStr) return;
+
             let processedCount = 0;
 
-            const todayTemplates = AppState.templates.filter(t => t.day === currentDay);
-
-            todayTemplates.forEach(templ => {
-                const alreadyExists = AppState.transactions.some(tx => {
-                    const txDate = new Date(tx.date);
-                    return txDate.getMonth() === currentMonth && 
-                           txDate.getFullYear() === currentYear &&
-                           tx.isAuto === true &&
-                           tx.desc === templ.desc &&
-                           tx.amount === templ.amount &&
-                           tx.type === templ.type;
-                });
-
-                if (!alreadyExists) {
-                    const dStr = today.toISOString().split('T')[0];
-                    let loanId = null; let calculatedPrincipal = 0;
-                    const loan = AppState.loans.find(l => l.name.toLowerCase().trim() === templ.desc.toLowerCase().trim());
-                    if (loan && templ.type === 'expense') {
-                         loanId = loan.id;
-                         const interest = loan.currentPrincipal * (loan.interestRate/100/12);
-                         calculatedPrincipal = Math.min(loan.currentPrincipal, templ.amount - interest);
-                    }
-                    createTransactionInternal({ id: "tx_auto_" + Date.now() + Math.random(), date: dStr, type: templ.type, desc: templ.desc, amount: templ.amount, category: templ.cat, linkedLoanId: loanId, isAuto: true, principalAmount: calculatedPrincipal > 0 ? templ.amount : 0 });
-                    processedCount++;
+            // Sestavíme seznam měsíců k zpracování od lastRun do dneška
+            // Vždy zkontrolujeme celý aktuální měsíc + případné předchozí
+            function getMonthsToCheck() {
+                const months = [];
+                const start = lastRunStr ? new Date(lastRunStr) : new Date(today.getFullYear(), today.getMonth(), 1);
+                start.setHours(0, 0, 0, 0);
+                let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+                const todayMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                while (cur <= todayMonth) {
+                    months.push({ year: cur.getFullYear(), month: cur.getMonth() });
+                    cur.setMonth(cur.getMonth() + 1);
                 }
+                return months;
+            }
+
+            const monthsToCheck = getMonthsToCheck();
+
+            monthsToCheck.forEach(function(m) {
+                const isCurrentMonth = (m.year === today.getFullYear() && m.month === today.getMonth());
+                const lastDayToProcess = isCurrentMonth ? today.getDate() : new Date(m.year, m.month + 1, 0).getDate();
+
+                AppState.templates.forEach(function(templ) {
+                    // Platba patří do tohoto měsíce jen pokud den <= lastDayToProcess
+                    if (templ.day > lastDayToProcess) return;
+
+                    // Datum platby - použij templ.day ale max do posledního dne měsíce
+                    const daysInMonth = new Date(m.year, m.month + 1, 0).getDate();
+                    const payDay = Math.min(templ.day, daysInMonth);
+                    const dStr = m.year + '-' + String(m.month + 1).padStart(2, '0') + '-' + String(payDay).padStart(2, '0');
+
+                    // Zkontroluj zda platba pro tento měsíc už existuje
+                    const alreadyExists = AppState.transactions.some(function(tx) {
+                        const txDate = new Date(tx.date);
+                        return txDate.getFullYear() === m.year &&
+                               txDate.getMonth() === m.month &&
+                               tx.isAuto === true &&
+                               tx.desc === templ.desc &&
+                               tx.amount === templ.amount &&
+                               tx.type === templ.type;
+                    });
+
+                    if (!alreadyExists) {
+                        let loanId = null; let calculatedPrincipal = 0;
+                        const loan = AppState.loans.find(function(l) {
+                            return l.name.toLowerCase().trim() === templ.desc.toLowerCase().trim();
+                        });
+                        if (loan && templ.type === 'expense') {
+                            loanId = loan.id;
+                            const interest = loan.currentPrincipal * (loan.interestRate / 100 / 12);
+                            calculatedPrincipal = Math.min(loan.currentPrincipal, templ.amount - interest);
+                        }
+                        createTransactionInternal({
+                            id: 'tx_auto_' + Date.now() + '_' + Math.random().toString(36).substr(2,5),
+                            date: dStr,
+                            type: templ.type,
+                            desc: templ.desc,
+                            amount: templ.amount,
+                            category: templ.cat,
+                            linkedLoanId: loanId,
+                            isAuto: true,
+                            principalAmount: calculatedPrincipal > 0 ? calculatedPrincipal : 0
+                        });
+                        processedCount++;
+                    }
+                });
             });
 
             if (processedCount > 0) {
                 saveData();
-                showToast(`Automatické platby provedeny (${processedCount})`);
+                showToast('Automaticky připsáno ' + processedCount + ' plateb');
+            } else {
+                // Uložit lastAutoRun i když nebyly žádné platby
+                localStorage.setItem(AppState._storageKey || 'SmartBudget_DarkMobile_v16_Colors', JSON.stringify(AppState));
             }
         }
 
